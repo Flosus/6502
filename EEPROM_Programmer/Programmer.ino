@@ -10,8 +10,8 @@ const int PIN_CHIP_ENABLED = 4;
 
 const int PIN_DATA[] = { 27, 28, 29, 16, 15, 14, 2, 3 };
 const int dataPinCount = 8;
-const int PIN_ADRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 17 };
-const int adressPinCount = 15;
+const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 17 };
+const int addressPinCount = 15;
 
 bool READ_MODE = true;
 bool WRITE_MODE = true;
@@ -20,13 +20,13 @@ bool WRITE_MODE = true;
 //int MAX_WORD = 32767;
 int MAX_WORD = 64;
 
-static const long int k_uTime_ReadPulse_uS = 10;
+static const long int writeCycleWait = 10;
 
 /*
 Setup and Setup helper functions
 */
 
-void SerialPrintBinary(int data) {
+void serialPrintBinary(int data) {
   String binary = "";
   for (int i = 0; i < 16; i++)
   {
@@ -43,40 +43,40 @@ void setDataPins(int mode) {
   }
 }
 
-void set_chip_enabled(int val) {
+void setChipEnabled(int val) {
   digitalWrite(PIN_CHIP_ENABLED, val);
 }
 
-void set_write_enabled(int val) {
+void setWriteEnabled(int val) {
   digitalWrite(PIN_WRITE_ENABLED, val);
 }
 
-void set_output_enabled(int val) {
+void setOutputEnabled(int val) {
   digitalWrite(PIN_OUTPUT_ENABLED, val);
 }
 
-void enable_pins() {
+void enablePins() {
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GREEN, OUTPUT);
   pinMode(PIN_OUTPUT_ENABLED, OUTPUT);
   pinMode(PIN_WRITE_ENABLED, OUTPUT);
   pinMode(PIN_CHIP_ENABLED, OUTPUT);
-  Serial.println("Setup adress Pins");
-  for (int i = 0; i < adressPinCount; i++) {
-    pinMode(PIN_ADRESS[i], OUTPUT);
+  Serial.println("Setup address Pins");
+  for (int i = 0; i < addressPinCount; i++) {
+    pinMode(PIN_ADDRESS[i], OUTPUT);
   }
 }
 
-void set_adress(int a) {
+void setAddress(int a) {
   byte tmp = a;
-  for (int i = 0; i < adressPinCount; i++) {
+  for (int i = 0; i < addressPinCount; i++) {
     bool enabled = tmp&1;
     tmp = (tmp >> 1);
-    digitalWrite(PIN_ADRESS[i], enabled ? HIGH : LOW);
+    digitalWrite(PIN_ADDRESS[i], enabled ? HIGH : LOW);
   }
 }
 
-void set_data(byte b) {
+void setData(byte b) {
   byte tmp = b;
   for (int i = 0; i < dataPinCount; i++) {
     bool enabled = tmp&1;
@@ -85,7 +85,7 @@ void set_data(byte b) {
   }
 }
 
-byte read_data() {
+byte readData() {
   byte data = 0;
   for (int i = dataPinCount - 1; i >= 0; i--) {
     int dataRaw = digitalRead(PIN_DATA[i]);
@@ -94,23 +94,23 @@ byte read_data() {
   return data;
 }
 
-byte read(int adress) {
+byte read(int address) {
   setDataPins(INPUT);
-  set_adress(adress);
-  set_chip_enabled(LOW);
-  delayMicroseconds(k_uTime_ReadPulse_uS);
-  byte data = read_data();
-  set_chip_enabled(HIGH);
+  setAddress(address);
+  setChipEnabled(LOW);
+  delayMicroseconds(writeCycleWait);
+  byte data = readData();
+  setChipEnabled(HIGH);
   return data;
 }
 
-void read_all() {
+void readAll() {
   digitalWrite(PIN_LED_RED, HIGH);
-  set_write_enabled(HIGH);
-  set_output_enabled(LOW);
+  setWriteEnabled(HIGH);
+  setOutputEnabled(LOW);
   Serial.println("Starting to read all bytes");
   for (int w = 0; w <= MAX_WORD; w++) {
-    SerialPrintBinary(w);
+    serialPrintBinary(w);
     Serial.print(": ");
     byte data = read(w);
     Serial.print(data, HEX);
@@ -120,47 +120,47 @@ void read_all() {
   digitalWrite(PIN_LED_RED, LOW);
 }
 
-void write(int adress, byte data) {
+void write(int address, byte data) {
   setDataPins(OUTPUT);
-  set_output_enabled(HIGH);
-  set_adress(adress);
-  set_chip_enabled(LOW);
-  set_write_enabled(LOW);
+  setOutputEnabled(HIGH);
+  setAddress(address);
+  setChipEnabled(LOW);
+  setWriteEnabled(LOW);
   delayMicroseconds(1);
-  set_data(data);
+  setData(data);
   delayMicroseconds(1);
-  set_write_enabled(HIGH);
-  set_chip_enabled(HIGH);
-  set_output_enabled(LOW);
+  setWriteEnabled(HIGH);
+  setChipEnabled(HIGH);
+  setOutputEnabled(LOW);
   delayMicroseconds(1);
 }
 
 void write() {
-  set_write_enabled(HIGH);
-  set_output_enabled(HIGH);
+  setWriteEnabled(HIGH);
+  setOutputEnabled(HIGH);
   //Serial.println("Writing 170");
   int val = 0;
   for (int w = 0; w <= MAX_WORD; w++) {
-    SerialPrintBinary(w);
+    serialPrintBinary(w);
     //Serial.print(": ");
     write(w, w);
     //Serial.print(val, HEX);
     Serial.println();
-    delayMicroseconds(k_uTime_ReadPulse_uS);
+    delayMicroseconds(writeCycleWait);
   }
 }
 
 void setup() {
   Serial.begin(9600);
-  enable_pins();
+  enablePins();
   Serial.println("Finished setup");
   digitalWrite(PIN_LED_GREEN, HIGH);
-  read_all();
+  readAll();
   //write(0b0000000000001001, 55);
   //write(0b0000000000001010, 0xAB);
   //write(0b0000000000010110, 0xAC);
   write();
-  read_all();
+  readAll();
   digitalWrite(PIN_LED_GREEN, LOW);
 }
 
