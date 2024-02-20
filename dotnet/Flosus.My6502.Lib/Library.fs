@@ -1,6 +1,7 @@
 ﻿namespace Flosus.My6502.Lib
 
 open System.IO.Ports
+open System.Threading
 
 module SerialManagement =
 
@@ -27,6 +28,22 @@ module SerialManagement =
 
 
     type SerialContext = SerialPort
+    exception NotReadyError of string
+    
+    
+    let toHex (i: byte): string =
+        i.ToString("X")
+    
+    let toFormattedData data =
+        let leftPadHex (str:string) =
+            match str.Length with
+            | 1 -> "0" + str
+            | _ -> str
+        data
+        |> Array.map toHex
+        |> Array.map leftPadHex
+        |> Array.toSeq
+        |> String.concat " "
 
     let private isNotInRange min max value = value < min || value > max
     let private IsInvalidAddress = isNotInRange MinAddress MaxAddress
@@ -41,22 +58,40 @@ module SerialManagement =
     let private InvalidDataCommand length =
         InvalidCommand($"Invalid data length: {length}")
 
+    let private WaitFor str (ctx:SerialContext) =
+        let line = ctx.ReadLine ()
+        printfn $"Got line: {line}"
+        match line with
+        | l when l = str -> ()
+        | _ -> raise (NotReadyError(line))
+    
     let private ReadData (startAddress: Address) (size: int) (ctx: SerialContext) =
-        printfn $"Reading @{startAddress} + {size}"
+        printfn $">>>Reading @{startAddress} + {size}"
+        WaitFor "READY" ctx
         ctx.WriteLine "READ\n"
+        WaitFor "READ" ctx
         ctx.WriteLine $"{startAddress}\n"
+        WaitFor (string startAddress) ctx
         ctx.WriteLine $"{size}\n"
+        WaitFor (string size) ctx
         let buffer: byte array = Array.zeroCreate size
+        Thread.Sleep 100
         let r = ctx.Read(buffer, 0, size)
         let bytes = buffer[0 .. r - 1]
-        printfn $"Finished reading: {bytes}"
+        Thread.Sleep 100
+        printfn $">>>Finished reading: {bytes.Length}"
+        printfn $">>> HEX: \"{toFormattedData bytes}\""
+        Thread.Sleep 100
         let str = System.Text.Encoding.ASCII.GetString bytes
-        printfn $"{str}"
+        printfn ">>>RAW:v"
+        printfn $"\"{str}\""
+        printfn ">>>RAW:^"
         SuccessData(bytes)
 
     let private ReadFromTo (startAddress: Address) (endAddress: Address) (ctx: SerialContext) =
         let readChunk (indexes: int array) =
             let startChunkIdx = startAddress + uint16 indexes[0]
+            Thread.Sleep 1000
             let result = ReadData startChunkIdx indexes.Length ctx
 
             match result with
@@ -82,7 +117,8 @@ module SerialManagement =
     let private WriteByteArray (address: Address) (data: byte[]) (ctx: SerialContext) =
         ctx.WriteLine "WRITE\n"
         ctx.WriteLine $"{address}\n"
-        ctx.WriteLine $"{1}\n"
+        ctx.WriteLine $"{data.Length}\n"
+        Thread.Sleep 100
         ctx.Write(data, 0, data.Length)
         Success
 
@@ -90,6 +126,7 @@ module SerialManagement =
         let sendBytes (indexes: int array) =
             let address = startAddress + uint16 indexes[0]
             let slice = data[indexes[0] .. indexes[indexes.Length - 1]]
+            Thread.Sleep 100
             WriteByteArray address slice ctx
 
         seq { 0..1 .. data.Length }

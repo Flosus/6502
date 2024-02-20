@@ -56,7 +56,6 @@ void enablePins() {
   pinMode(PIN_OUTPUT_ENABLED, OUTPUT);
   pinMode(PIN_WRITE_ENABLED, OUTPUT);
   pinMode(PIN_CHIP_ENABLED, OUTPUT);
-  Serial.println("Setup address Pins");
   for (int i = 0; i < addressPinCount; i++) {
     pinMode(PIN_ADDRESS[i], OUTPUT);
   }
@@ -138,18 +137,22 @@ void write(byte * data, int startAddress, int size) {
 
 void setup() {
   Serial.begin(9600);
-  Serial.println("SETUP");
+  //Serial.println("SETUP");
   enablePins();
-  Serial.println("SETUP_FINISHED");
+  //Serial.println("SETUP_FINISHED");
 }
 
 void loop() {
   while (!Serial) {}
+  Serial.println("READY");
   while (Serial.available() == 0) {}
   String command = Serial.readStringUntil('\n');
   if (command == "READ") {
-    int address = 0; //Serial.readStringUntil('\n').toInt();
-    int size = 100; // Serial.readStringUntil('\n').toInt();
+    Serial.println("READ");
+    int address = Serial.readStringUntil('\n').toInt();
+    Serial.println(address);
+    int size = Serial.readStringUntil('\n').toInt();
+    Serial.println(size);
     byte * readData = read(address, size);
     Serial.write(readData, size);
   } else if (command == "WRITE") {
