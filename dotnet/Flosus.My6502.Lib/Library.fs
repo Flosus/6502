@@ -1,5 +1,7 @@
 ﻿namespace Flosus.My6502.Lib
 
+open System.Collections.Concurrent
+open System.IO
 open System.IO.Ports
 open System.Threading
 
@@ -26,24 +28,111 @@ module SerialManagement =
         | Success
         | SuccessData of byte[]
 
+    type SerialContext =
+        { SerialPort: SerialPort
+          MessageBytes: ConcurrentQueue<byte array>
+          Messages: ConcurrentQueue<string>
+          OnMessageHandler: string -> unit
+          mutable IsExecuting: bool
+          mutable IsRunning: bool }
 
-    type SerialContext = SerialPort
     exception NotReadyError of string
-    
-    
-    let toHex (i: byte): string =
-        i.ToString("X")
-    
-    let toFormattedData data =
-        let leftPadHex (str:string) =
+
+    let ToHex (i: byte) : string = i.ToString("X")
+
+    let ToFormattedData data =
+        let leftPadHex (str: string) =
             match str.Length with
             | 1 -> "0" + str
             | _ -> str
+
         data
-        |> Array.map toHex
+        |> Array.map ToHex
         |> Array.map leftPadHex
         |> Array.toSeq
         |> String.concat " "
+
+    let runAndWait (exe: unit -> unit) (ctx: SerialContext) =
+        ctx.IsExecuting <- true
+        exe ()
+
+        let rec wait () =
+            match ctx.IsExecuting with
+            | true ->
+                Thread.Sleep(10)
+                wait ()
+            | false -> ()
+
+        wait ()
+        Thread.Sleep 100
+
+    let write (path: string) (data: byte array) =
+        use fs =
+            match File.Exists path with
+            | false -> File.Create path
+            | true -> File.Open(path, FileMode.Append)
+
+        fs.Write(data, 0, data.Length)
+
+    let private TryParseInput (ctx: SerialContext) =
+        let allData = ctx.MessageBytes.ToArray() |> Array.concat
+        let str = System.Text.Encoding.ASCII.GetString allData
+        let endIndex = str.IndexOf "END"
+
+        if str.StartsWith "BIN" && endIndex <> -1 then
+            ctx.MessageBytes.Clear()
+            let data = allData[3 .. allData.Length - 4]
+            write "./EEPROM.BIN" data
+            ()
+        elif str.StartsWith "RESP" && endIndex <> -1 then
+            ctx.MessageBytes.Clear()
+            ctx.IsExecuting <- false
+            let data = str[4 .. str.Length - 4]
+            ctx.OnMessageHandler data
+        else
+            ()
+
+    let rec ReadPort (ctx: SerialContext) =
+        let buffer: byte array = Array.zeroCreate 64
+        let readCount = ctx.SerialPort.Read(buffer, 0, 64)
+
+        match readCount with
+        | 0 -> ()
+        | _ ->
+            let bytesRead = buffer[.. readCount - 1]
+            ctx.MessageBytes.Enqueue bytesRead
+            TryParseInput ctx
+
+        match ctx.IsRunning with
+        | false -> ctx.SerialPort.Close()
+        | true -> ReadPort ctx
+
+    let PrintMsgDebug (str: string) = printfn $"[Arduino]{str}"
+
+    let SwallowMessage (_: string) = ()
+
+    let DumpMessageDebug (filePath: string) =
+        let streamWriter = File.AppendText filePath
+
+        let _DebugDump (str: string) = streamWriter.Write str
+
+        _DebugDump
+
+
+    let CreateNewSerialContext (port: SerialPort) printMsg : SerialContext =
+        let ctx =
+            { SerialPort = port
+              MessageBytes = ConcurrentQueue<byte array>()
+              Messages = ConcurrentQueue<string>()
+              OnMessageHandler = printMsg
+              IsExecuting = false
+              IsRunning = true }
+
+        let run () = ReadPort ctx
+        let thread = Thread(run)
+        port.Open()
+        thread.Start()
+        ctx
 
     let private isNotInRange min max value = value < min || value > max
     let private IsInvalidAddress = isNotInRange MinAddress MaxAddress
@@ -58,29 +147,30 @@ module SerialManagement =
     let private InvalidDataCommand length =
         InvalidCommand($"Invalid data length: {length}")
 
-    let private WaitFor str (ctx:SerialContext) =
-        let line = ctx.ReadLine ()
+    let private WaitFor str (ctx: SerialContext) =
+        let line = ctx.SerialPort.ReadLine()
         printfn $"Got line: {line}"
+
         match line with
         | l when l = str -> ()
         | _ -> raise (NotReadyError(line))
-    
+
     let private ReadData (startAddress: Address) (size: int) (ctx: SerialContext) =
         printfn $">>>Reading @{startAddress} + {size}"
         WaitFor "READY" ctx
-        ctx.WriteLine "READ\n"
+        ctx.SerialPort.WriteLine "READ\n"
         WaitFor "READ" ctx
-        ctx.WriteLine $"{startAddress}\n"
+        ctx.SerialPort.WriteLine $"{startAddress}\n"
         WaitFor (string startAddress) ctx
-        ctx.WriteLine $"{size}\n"
+        ctx.SerialPort.WriteLine $"{size}\n"
         WaitFor (string size) ctx
         let buffer: byte array = Array.zeroCreate size
         Thread.Sleep 100
-        let r = ctx.Read(buffer, 0, size)
+        let r = ctx.SerialPort.Read(buffer, 0, size)
         let bytes = buffer[0 .. r - 1]
         Thread.Sleep 100
         printfn $">>>Finished reading: {bytes.Length}"
-        printfn $">>> HEX: \"{toFormattedData bytes}\""
+        printfn $">>> HEX: \"{ToFormattedData bytes}\""
         Thread.Sleep 100
         let str = System.Text.Encoding.ASCII.GetString bytes
         printfn ">>>RAW:v"
@@ -108,18 +198,18 @@ module SerialManagement =
         |> SuccessData
 
     let private WriteByte (address: Address) (data: byte) (ctx: SerialContext) =
-        ctx.WriteLine "WRITE\n"
-        ctx.WriteLine $"{address}\n"
-        ctx.WriteLine $"{1}\n"
-        ctx.Write([| data |], 0, 1)
+        ctx.SerialPort.WriteLine "WRITE\n"
+        ctx.SerialPort.WriteLine $"{address}\n"
+        ctx.SerialPort.WriteLine $"{1}\n"
+        ctx.SerialPort.Write([| data |], 0, 1)
         Success
 
     let private WriteByteArray (address: Address) (data: byte[]) (ctx: SerialContext) =
-        ctx.WriteLine "WRITE\n"
-        ctx.WriteLine $"{address}\n"
-        ctx.WriteLine $"{data.Length}\n"
+        ctx.SerialPort.WriteLine "WRITE\n"
+        ctx.SerialPort.WriteLine $"{address}\n"
+        ctx.SerialPort.WriteLine $"{data.Length}\n"
         Thread.Sleep 100
-        ctx.Write(data, 0, data.Length)
+        ctx.SerialPort.Write(data, 0, data.Length)
         Success
 
     let private WriteBytes (startAddress: Address) (data: byte[]) (ctx: SerialContext) =

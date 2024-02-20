@@ -16,21 +16,13 @@ const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 
 #define MAX_WORD 32767
 
 #define writeCycleWait 10
+#define DATA_BUFFER_SIZE 69
+#define COMMAND_WRITE "W"
+#define COMMAND_READ "R"
 
 /*
 Setup and Setup helper functions
 */
-
-void serialPrintBinary(int data) {
-  String binary = "";
-  for (int i = 0; i < 16; i++)
-  {
-    bool b = data & 1;
-    binary = (b ? "1" : "0") + binary;
-    data = data >> 1;
-  }
-  Serial.print(binary);
-}
 
 void setDataPins(int mode) {
   for (int i = 0; i < dataPinCount; i++) {
@@ -98,17 +90,14 @@ byte read(int address) {
   return data;
 }
 
-byte * read(int startAddress, int readSize) {
+void read(byte buffer[], int startAddress, int readSize) {
   digitalWrite(PIN_LED_RED, HIGH);
   setWriteEnabled(HIGH);
   setOutputEnabled(LOW);
-  byte * result;
-  result = (byte*)malloc(readSize*(sizeof(byte)));
   for (int w = 0; w < readSize; w++) {
-    result[w] = read(startAddress + w);
+    buffer[w] = read(startAddress + w);
   }
   digitalWrite(PIN_LED_RED, LOW);
-  return result;
 }
 
 void write(int address, byte data) {
@@ -137,32 +126,92 @@ void write(byte * data, int startAddress, int size) {
 
 void setup() {
   Serial.begin(9600);
-  //Serial.println("SETUP");
+  printString("SETUP");
   enablePins();
-  //Serial.println("SETUP_FINISHED");
+  printString("SETUP_FINISHED");
 }
+
+byte dataBuffer[DATA_BUFFER_SIZE];
+
+String command = "_";
+int commandAddress = -1;
+int commandSize = -1;
+byte * data = NULL;
+bool isRunningCommand = false;
+bool isExpectingData = false;
 
 void loop() {
   while (!Serial) {}
-  Serial.println("READY");
+  printString("READY");
   while (Serial.available() == 0) {}
-  String command = Serial.readStringUntil('\n');
-  if (command == "READ") {
-    Serial.println("READ");
-    int address = Serial.readStringUntil('\n').toInt();
-    Serial.println(address);
-    int size = Serial.readStringUntil('\n').toInt();
-    Serial.println(size);
-    byte * readData = read(address, size);
-    Serial.write(readData, size);
-  } else if (command == "WRITE") {
-    int address = Serial.readStringUntil('\n').toInt();
-    int size = Serial.readStringUntil('\n').toInt();
-    byte * dataBuffer = (byte*)malloc(size*(sizeof(byte)));
-    int pointerEnd = Serial.readBytes(dataBuffer, size);
-    write(dataBuffer, address, size);
+  int read = Serial.readBytesUntil('\n', dataBuffer, DATA_BUFFER_SIZE);
+  char * inputChars =  (char*) malloc(read * (sizeof(char)));
+  strncpy(inputChars, dataBuffer, read);
+  String input = String(inputChars);
+
+  /* Inputs:
+    * CMD_START
+    * CMD_RESET
+    * CMD_R
+    * CMD_W
+    * CMD_A<Address>
+    * CMD_S<Size>
+    * CMD_D<DATA>
+  */
+  if (isRunningCommand) {
+    printString("BUSY");
+  } else if (input.startsWith("CMD_START")) {
+    cmdStart();
+  } else if (input.startsWith("CMD_RESET")) {
+    cmdReset();
+  } else if (input.startsWith("CMD_R")) {
+    command = COMMAND_READ;
+  } else if (input.startsWith("CMD_W")) {
+    command = COMMAND_WRITE;
+  } else if (input.startsWith("CMD_A")) {
+    commandAddress = input.substring(5).toInt();
+  } else if (input.startsWith("CMD_S")) {
+    commandSize = input.substring(5).toInt();
+  } else if (input.startsWith("CMD_D")) {
+    data = dataBuffer + 5; 
+  } else {
+    printString("INVALID_INPUT_'" + input + "'");
   }
-  else {
-    Serial.println("UNKNOWN_COMMAND: " + command);
+  printString("ECHO#" + input);
+}
+
+void printString(String msg) {
+  Serial.print("RESP" + msg + "END");
+}
+
+void cmdStart() {
+  if (!isCommandValid()) {
+    printString("INCOMPLETE_COMMAND_" + command + "_" + commandAddress + "_" + commandSize);
   }
+  if (command == COMMAND_READ) {
+    read(dataBuffer, commandAddress, commandSize);
+    Serial.print("BIN");
+    Serial.write(dataBuffer, commandSize);
+    Serial.print("END");
+    delayMicroseconds(1);
+  } else if (command == COMMAND_WRITE) {
+    
+  }
+  cmdReset();
+}
+
+void cmdReset() {
+  command = "_";
+  commandAddress = -1;
+  commandSize = -1;
+  data = NULL;
+  isRunningCommand = false;
+  memset(dataBuffer, 0, sizeof(dataBuffer));
+  printString("RESET");
+}
+
+bool isCommandValid() {
+  return (command == "R" || command == "W" && data != NULL)
+    && commandAddress < MAX_WORD
+    && commandSize > 0;
 }
