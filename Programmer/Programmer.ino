@@ -3,6 +3,8 @@ Define constants
 */
 #define PIN_LED_RED 12
 #define PIN_LED_GREEN 13
+#define PIN_LED_IS_READING 32
+#define PIN_LED_IS_WRITING 33
 #define PIN_OUTPUT_ENABLED 6
 #define PIN_WRITE_ENABLED 11
 #define PIN_CHIP_ENABLED 4
@@ -17,6 +19,7 @@ const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 
 
 #define writeCycleWait 10
 #define DATA_BUFFER_SIZE 69
+#define MESSAGE_BUFFER_SIZE 64
 #define COMMAND_WRITE "W"
 #define COMMAND_READ "R"
 
@@ -45,6 +48,8 @@ void setOutputEnabled(int val) {
 void enablePins() {
   pinMode(PIN_LED_RED, OUTPUT);
   pinMode(PIN_LED_GREEN, OUTPUT);
+  pinMode(PIN_LED_IS_READING, OUTPUT);
+  pinMode(PIN_LED_IS_WRITING, OUTPUT);
   pinMode(PIN_OUTPUT_ENABLED, OUTPUT);
   pinMode(PIN_WRITE_ENABLED, OUTPUT);
   pinMode(PIN_CHIP_ENABLED, OUTPUT);
@@ -81,57 +86,81 @@ byte readData() {
 }
 
 byte read(int address) {
+  setWriteEnabled(HIGH);
+  setChipEnabled(HIGH);
+  setOutputEnabled(HIGH);
   setDataPins(INPUT);
   setAddress(address);
+  // delay because idk
+  delayMicroseconds(6500);
   setChipEnabled(LOW);
-  delayMicroseconds(writeCycleWait);
+  setOutputEnabled(LOW);
   byte data = readData();
   setChipEnabled(HIGH);
+  setOutputEnabled(HIGH);
   return data;
 }
 
 void read(byte buffer[], int startAddress, int readSize) {
-  digitalWrite(PIN_LED_RED, HIGH);
   setWriteEnabled(HIGH);
   setOutputEnabled(LOW);
   for (int w = 0; w < readSize; w++) {
     buffer[w] = read(startAddress + w);
   }
-  digitalWrite(PIN_LED_RED, LOW);
 }
 
 void write(int address, byte data) {
-  setWriteEnabled(HIGH);
-  setOutputEnabled(HIGH);
-  delayMicroseconds(writeCycleWait);
   setDataPins(OUTPUT);
+  setOutputEnabled(LOW);
+  setWriteEnabled(HIGH);
+  setChipEnabled(HIGH);
   setOutputEnabled(HIGH);
   setAddress(address);
   setChipEnabled(LOW);
   setWriteEnabled(LOW);
-  delayMicroseconds(1);
   setData(data);
-  delayMicroseconds(1);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
   setOutputEnabled(LOW);
-  delayMicroseconds(1);
+}
+
+void writeEnsured(int address, byte data) {
+  int tries = 10;
+  bool success = false;
+  while (!success && tries > 0) {
+    write(address, data);
+    byte readData = read(address);
+    success = readData == data;
+    tries--;
+    if (!success) {
+      Serial.print("ERROR WHILE WRITING");
+      Serial.print(data);
+      Serial.print("@");
+      Serial.print(address);
+      Serial.print(" != ");
+      Serial.print(readData);
+      Serial.println();
+    }
+  }
 }
 
 void write(byte * data, int startAddress, int size) {
   for (int i = 0; i < size; i++) {
-    write(startAddress + i, data + i);
+    byte * dataBytePointer = data + i;
+    byte dataByte = &(dataBytePointer);
+    write(startAddress + i, dataByte);
+    delayMicroseconds(1);
   }
 }
 
 void setup() {
   Serial.begin(9600);
-  printString("SETUP");
   enablePins();
-  printString("SETUP_FINISHED");
+  sendStr("setup_end");
 }
 
 byte dataBuffer[DATA_BUFFER_SIZE];
+byte messageBuffer[MESSAGE_BUFFER_SIZE];
 
 String command = "_";
 int commandAddress = -1;
@@ -142,24 +171,20 @@ bool isExpectingData = false;
 
 void loop() {
   while (!Serial) {}
-  printString("READY");
+  digitalWrite(PIN_LED_GREEN, HIGH);
   while (Serial.available() == 0) {}
+  sendStr("rdy");
+  memset(dataBuffer, 0, sizeof(dataBuffer));
+  memset(messageBuffer, 0, sizeof(MESSAGE_BUFFER_SIZE));
   int read = Serial.readBytesUntil('\n', dataBuffer, DATA_BUFFER_SIZE);
-  char * inputChars =  (char*) malloc(read * (sizeof(char)));
+  digitalWrite(PIN_LED_GREEN, LOW);
+  digitalWrite(PIN_LED_RED, HIGH);
+  char * inputChars =  (char*) malloc((read * (sizeof(char)) + 1));
   strncpy(inputChars, dataBuffer, read);
+  inputChars[read] = NULL;
   String input = String(inputChars);
-
-  /* Inputs:
-    * CMD_START
-    * CMD_RESET
-    * CMD_R
-    * CMD_W
-    * CMD_A<Address>
-    * CMD_S<Size>
-    * CMD_D<DATA>
-  */
   if (isRunningCommand) {
-    printString("BUSY");
+    sendStr("BUSY");
   } else if (input.startsWith("CMD_START")) {
     cmdStart();
   } else if (input.startsWith("CMD_RESET")) {
@@ -173,26 +198,46 @@ void loop() {
   } else if (input.startsWith("CMD_S")) {
     commandSize = input.substring(5).toInt();
   } else if (input.startsWith("CMD_D")) {
-    data = dataBuffer + 5; 
+    data = dataBuffer + 5;
+  } else if (input.startsWith("ECHO")) {
+    String echoText = input.substring(4);
+    sendStr(echoText);
   } else {
-    printString("INVALID_INPUT_'" + input + "'");
+    String str = "INVALID_INPUT_'" + input + "'";
+    sendStr(str);
   }
-  printString("ECHO#" + input);
+  free(inputChars);
+  digitalWrite(PIN_LED_RED, LOW);
 }
 
-void printString(String msg) {
-  Serial.print("RESP" + msg + "END");
+bool startsWith(char * input) {
+
+}
+
+void sendStr(String msg) {
+  memset(messageBuffer, 0, sizeof(MESSAGE_BUFFER_SIZE));
+  msg.toCharArray(messageBuffer, MESSAGE_BUFFER_SIZE);
+  sendData(messageBuffer, msg.length());
+}
+
+void sendData(char * msg, int length) {
+  for (int i = 0; i < MESSAGE_BUFFER_SIZE; i++) {
+    if (i < length) {
+      Serial.print(msg[i]);
+    } else {
+      Serial.print(0);
+    }
+  }
 }
 
 void cmdStart() {
   if (!isCommandValid()) {
-    printString("INCOMPLETE_COMMAND_" + command + "_" + commandAddress + "_" + commandSize);
+    sendStr("INCOMPLETE_COMMAND_[" + command + "@" + commandAddress + "+" + commandSize + "]");
   }
   if (command == COMMAND_READ) {
     read(dataBuffer, commandAddress, commandSize);
-    Serial.print("BIN");
-    Serial.write(dataBuffer, commandSize);
-    Serial.print("END");
+    sendStr("BIN_START");
+    sendData(dataBuffer, commandSize);
     delayMicroseconds(1);
   } else if (command == COMMAND_WRITE) {
     
@@ -207,7 +252,13 @@ void cmdReset() {
   data = NULL;
   isRunningCommand = false;
   memset(dataBuffer, 0, sizeof(dataBuffer));
-  printString("RESET");
+  sendStr("RESET");
+}
+
+void fill(byte *data, int size, byte value){
+  for (int i = 0; i < size; i++) {
+    data[i] = value;
+  }
 }
 
 bool isCommandValid() {

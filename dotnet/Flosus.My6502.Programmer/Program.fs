@@ -1,6 +1,7 @@
 ﻿namespace Flosus.My6502.Programmer
 
 open System
+open System.Collections.Concurrent
 open System.IO
 open System.IO.Ports
 open System.Threading
@@ -9,89 +10,89 @@ open Flosus.My6502.Lib.SerialManagement
 
 module EEPROMProgrammer =
 
+    type Context =
+        { SerialPort: SerialPort
+          mutable IsReady: bool
+          Messages: ConcurrentQueue<byte> }
+
+
+    let waitForReady (port: Context) =
+        while not port.IsReady do
+            ()
+    
+    let sendAndWait (port: Context) (cmd:string) =
+        waitForReady port
+        port.SerialPort.Write($"{cmd}\n")
+        port.IsReady <- false
+        waitForReady port
+
+
+    let readPage (port: Context) (size: byte) (address: uint16) =
+        let send = sendAndWait port
+        // printfn "Sending CMD_R"
+        send "CMD_R"
+        // printfn $"Sending CMD_A{address}"
+        send $"CMD_A{address}"
+        // printfn $"Sending CMD_S{size}"
+        send $"CMD_S{size}"
+        // printfn $"Sending CMD_START"
+        send "CMD_START"
+
+    let readAll (port: Context) =
+        let size: byte = byte 64
+        [|0 .. 511|]
+        |> Array.iter (fun i ->
+                readPage port size ((uint16 i) * (uint16 64))
+            )
+
+    let rec read (ctx: Context) =
+        if not ctx.SerialPort.IsOpen then
+            printfn "No more reading"
+        else
+            try
+                let bt = ctx.SerialPort.ReadByte()
+
+                match bt with
+                | b when b > 0 && b <= int Byte.MaxValue ->
+                    ctx.Messages.Enqueue(byte bt)
+                    printf $"{char bt}"
+
+                    if ctx.Messages.Count % 64 = 0 then
+                        printfn ""
+                        ctx.IsReady <- true
+                | _ -> printfn "INVALID READ BYTE"
+            with
+            | :? TimeoutException -> ctx.IsReady <- true
+            | e -> printfn $"e:{e.Message}"
+
+            read ctx
+
 
     [<EntryPoint>]
     let main args =
         printfn "Starting up"
+        let port = new SerialPort("COM5", 9600)
+        port.ReadTimeout <- 1000
 
-        let dumper = DumpMessageDebug "./output.log"
+        let ctx: Context =
+            { SerialPort = port
+              IsReady = false
+              Messages = ConcurrentQueue<byte>() }
 
-        let ctx: SerialContext =
-            CreateNewSerialContext (new SerialPort("COM5", 9600)) PrintMsgDebug
+        let run () = read ctx
+        let thread = Thread(run)
+        port.Open()
+        thread.Start()
 
-        //let command = ReadAll
-        //let command = ReadRange (MinAddress, MinAddress + uint16 511)
-        let command = ReadRange(MinAddress, MinAddress + uint16 0x3F)
-        let bytes = [| 0..1 .. int MaxAddress |] |> Array.map (fun i -> byte (i % 255))
-        //let command = WriteAll bytes
-        //let dataResult = Send command ctx
+        port.NewLine <- "\n'"
+        readAll ctx |> ignore
 
-        // match dataResult with
-        // | SuccessData data -> File.WriteAllBytes("./eeprom.bin", data)
-        // | _ -> printfn "oh no"
-        printfn $"EXISTING: {ctx.SerialPort.ReadExisting()}"
+        ctx.IsReady <- false
+        waitForReady ctx
 
-        let write cmd =
-            let f () =
-                ctx.SerialPort.Write $"{cmd}\n"
-                ()
-
-            f
-
-        (*runAndWait (write "CMD_A0") ctx
-        runAndWait (write "CMD_S64") ctx
-        runAndWait (write "CMD_R") ctx
-        runAndWait (write "CMD_START") ctx
-
-        runAndWait (write "CMD_R") ctx
-        runAndWait (write "CMD_A64") ctx
-        runAndWait (write "CMD_S64") ctx
-        runAndWait (write "CMD_START") ctx
-
-        runAndWait (write "CMD_R") ctx
-        runAndWait (write "CMD_A128") ctx
-        runAndWait (write "CMD_S64") ctx
-        runAndWait (write "CMD_START") ctx
-
-        runAndWait (write "CMD_R") ctx
-        runAndWait (write "CMD_A192") ctx
-        runAndWait (write "CMD_S64") ctx
-        runAndWait (write "CMD_START") ctx
-
-        runAndWait (write "CMD_R") ctx
-        runAndWait (write "CMD_A256") ctx
-        runAndWait (write "CMD_S64") ctx
-        runAndWait (write "CMD_START") ctx*)
+        Thread.Sleep 2000
         
-        let forEachPage (page: int) =
-            let address = page * 64
-            printfn $"{page} -> {address}"
-            runAndWait (write "CMD_R") ctx
-            runAndWait (write $"CMD_A{address}") ctx
-            runAndWait (write "CMD_S64") ctx
-            runAndWait (write "CMD_START") ctx
-            ()
-        [0 .. 511]
-        |> Seq.toArray
-        |> Array.iter forEachPage
-
-        (*Console.ReadLine () |> ctx.SerialPort.WriteLine
-        Console.ReadLine () |> ctx.SerialPort.WriteLine
-        Console.ReadLine () |> ctx.SerialPort.WriteLine
-        Console.ReadLine () |> ctx.SerialPort.WriteLine
-        Console.ReadLine () |> ctx.SerialPort.WriteLine
-        Console.ReadLine () |> ctx.SerialPort.WriteLine
-        Console.ReadLine () |> ctx.SerialPort.WriteLine*)
-
-        let rec wait () =
-            match ctx.IsExecuting with
-            | true -> wait ()
-            | false ->
-                ctx.IsRunning <- false
-                ()
-
-        wait ()
-        ctx.SerialPort.Close()
-        printfn "Closing context"
+        printfn "Closing ports"
+        port.Close()
         printfn "Bye bye"
         0

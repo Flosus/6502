@@ -77,20 +77,22 @@ module SerialManagement =
     let private TryParseInput (ctx: SerialContext) =
         let allData = ctx.MessageBytes.ToArray() |> Array.concat
         let str = System.Text.Encoding.ASCII.GetString allData
-        let endIndex = str.IndexOf "END"
-
-        if str.StartsWith "BIN" && endIndex <> -1 then
+        ctx.MessageBytes.Clear()
+        ctx.IsExecuting <- false
+        printfn $"{str}"
+        write "./EEPROM.BIN" allData
+        (*if allData.Length < 64 then
+            ()
+        elif str.StartsWith "BIN" then
             ctx.MessageBytes.Clear()
             let data = allData[3 .. allData.Length - 4]
             write "./EEPROM.BIN" data
             ()
-        elif str.StartsWith "RESP" && endIndex <> -1 then
+        else
             ctx.MessageBytes.Clear()
             ctx.IsExecuting <- false
             let data = str[4 .. str.Length - 4]
-            ctx.OnMessageHandler data
-        else
-            ()
+            ctx.OnMessageHandler data*)
 
     let rec ReadPort (ctx: SerialContext) =
         let buffer: byte array = Array.zeroCreate 64
