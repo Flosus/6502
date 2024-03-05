@@ -18,10 +18,13 @@ const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 
 #define MAX_WORD 32767
 
 #define writeCycleWait 10
-#define DATA_BUFFER_SIZE 69
+//#define DATA_BUFFER_SIZE 64 + 5
+#define DATA_BUFFER_SIZE 1024 + 5
 #define MESSAGE_BUFFER_SIZE 64
-#define COMMAND_WRITE "W"
 #define COMMAND_READ "R"
+#define COMMAND_READ_ALL "RA"
+#define COMMAND_WRITE "W"
+#define COMMAND_WRITE_ALL "WA"
 
 /*
 Setup and Setup helper functions
@@ -86,13 +89,13 @@ byte readData() {
 }
 
 byte read(int address) {
+  setAddress(address);
+  setDataPins(INPUT);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
   setOutputEnabled(HIGH);
-  setDataPins(INPUT);
-  setAddress(address);
   // delay because idk
-  delayMicroseconds(6500);
+  delayMicroseconds(7000);
   setChipEnabled(LOW);
   setOutputEnabled(LOW);
   byte data = readData();
@@ -104,6 +107,7 @@ byte read(int address) {
 void read(byte buffer[], int startAddress, int readSize) {
   setWriteEnabled(HIGH);
   setOutputEnabled(LOW);
+  unsigned long start = millis();
   for (int w = 0; w < readSize; w++) {
     buffer[w] = read(startAddress + w);
   }
@@ -111,14 +115,18 @@ void read(byte buffer[], int startAddress, int readSize) {
 
 void write(int address, byte data) {
   setDataPins(OUTPUT);
+  setAddress(address);
+  setData(data);
+  delayMicroseconds(100);
   setOutputEnabled(LOW);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
+  delayMicroseconds(100);
   setOutputEnabled(HIGH);
-  setAddress(address);
+  delayMicroseconds(100);
   setChipEnabled(LOW);
   setWriteEnabled(LOW);
-  setData(data);
+  delayMicroseconds(100);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
   setOutputEnabled(LOW);
@@ -128,12 +136,14 @@ void writeEnsured(int address, byte data) {
   int tries = 10;
   bool success = false;
   while (!success && tries > 0) {
+    delayMicroseconds(10);
     write(address, data);
+    delayMicroseconds(10);
     byte readData = read(address);
     success = readData == data;
     tries--;
     if (!success) {
-      Serial.print("ERROR WHILE WRITING");
+      Serial.print("ERROR WHILE WRITING: ");
       Serial.print(data);
       Serial.print("@");
       Serial.print(address);
@@ -144,18 +154,17 @@ void writeEnsured(int address, byte data) {
   }
 }
 
-void write(byte * data, int startAddress, int size) {
+void writeEnsured(byte * data, int startAddress, int size) {
   for (int i = 0; i < size; i++) {
-    byte * dataBytePointer = data + i;
-    byte dataByte = &(dataBytePointer);
-    write(startAddress + i, dataByte);
-    delayMicroseconds(1);
+    writeEnsured(startAddress + i, data[i]);
+    delayMicroseconds(10);
   }
 }
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(115200);
   enablePins();
+  while (!Serial) {}
   sendStr("setup_end");
 }
 
@@ -170,10 +179,9 @@ bool isRunningCommand = false;
 bool isExpectingData = false;
 
 void loop() {
-  while (!Serial) {}
   digitalWrite(PIN_LED_GREEN, HIGH);
-  while (Serial.available() == 0) {}
   sendStr("rdy");
+  while (Serial.available() == 0) {}
   memset(dataBuffer, 0, sizeof(dataBuffer));
   memset(messageBuffer, 0, sizeof(MESSAGE_BUFFER_SIZE));
   int read = Serial.readBytesUntil('\n', dataBuffer, DATA_BUFFER_SIZE);
@@ -189,8 +197,18 @@ void loop() {
     cmdStart();
   } else if (input.startsWith("CMD_RESET")) {
     cmdReset();
+  } else if (input.startsWith("CMD_RA")) {
+    command = COMMAND_READ_ALL;
+    commandAddress = 0;
+    commandSize = 256;
+    cmdStart();
   } else if (input.startsWith("CMD_R")) {
     command = COMMAND_READ;
+  } else if (input.startsWith("CMD_WA")) {
+    command = COMMAND_WRITE_ALL;
+    commandAddress = 0;
+    commandSize = 256;
+    cmdStart();
   } else if (input.startsWith("CMD_W")) {
     command = COMMAND_WRITE;
   } else if (input.startsWith("CMD_A")) {
@@ -210,10 +228,6 @@ void loop() {
   digitalWrite(PIN_LED_RED, LOW);
 }
 
-bool startsWith(char * input) {
-
-}
-
 void sendStr(String msg) {
   memset(messageBuffer, 0, sizeof(MESSAGE_BUFFER_SIZE));
   msg.toCharArray(messageBuffer, MESSAGE_BUFFER_SIZE);
@@ -221,28 +235,10 @@ void sendStr(String msg) {
 }
 
 void sendData(char * msg, int length) {
-  for (int i = 0; i < MESSAGE_BUFFER_SIZE; i++) {
-    if (i < length) {
-      Serial.print(msg[i]);
-    } else {
-      Serial.print(0);
-    }
+  Serial.write(msg, length);
+  for (int i = length; i < MESSAGE_BUFFER_SIZE; i++) {
+    Serial.write(0);
   }
-}
-
-void cmdStart() {
-  if (!isCommandValid()) {
-    sendStr("INCOMPLETE_COMMAND_[" + command + "@" + commandAddress + "+" + commandSize + "]");
-  }
-  if (command == COMMAND_READ) {
-    read(dataBuffer, commandAddress, commandSize);
-    sendStr("BIN_START");
-    sendData(dataBuffer, commandSize);
-    delayMicroseconds(1);
-  } else if (command == COMMAND_WRITE) {
-    
-  }
-  cmdReset();
 }
 
 void cmdReset() {
@@ -252,6 +248,7 @@ void cmdReset() {
   data = NULL;
   isRunningCommand = false;
   memset(dataBuffer, 0, sizeof(dataBuffer));
+  memset(messageBuffer, 0, sizeof(MESSAGE_BUFFER_SIZE));
   sendStr("RESET");
 }
 
@@ -262,7 +259,43 @@ void fill(byte *data, int size, byte value){
 }
 
 bool isCommandValid() {
-  return (command == "R" || command == "W" && data != NULL)
+  return (command == COMMAND_READ || command == COMMAND_READ_ALL || command == COMMAND_WRITE_ALL || command == COMMAND_WRITE && data != NULL)
     && commandAddress < MAX_WORD
     && commandSize > 0;
+}
+
+void cmdStart() {
+  if (!isCommandValid()) {
+    sendStr("INCOMPLETE_COMMAND_[" + command + "@" + commandAddress + "+" + commandSize + "]");
+    return;
+  }
+  if (command == COMMAND_READ) {
+    read(dataBuffer, commandAddress, commandSize);
+    sendStr("BIN_START_SINGLE");
+    sendData(dataBuffer, commandSize);
+    sendStr("BIN_END_SINGLE");
+    delayMicroseconds(1);
+  } else if (command == COMMAND_READ_ALL) {
+    sendStr("BIN_START_ALL");
+    for (long i = 0; i < MAX_WORD;) {
+      int address = i * commandSize;
+      read(dataBuffer, address, commandSize);
+      sendData(dataBuffer, commandSize);
+      i += commandSize;
+    }
+    sendStr("BIN_END_ALL");
+  } else if (command == COMMAND_WRITE_ALL) {
+    for (long i = 0; i < MAX_WORD;) {
+      //int bytesRead = Serial.readBytes(dataBuffer, commandSize);
+      //writeEnsured(dataBuffer, i, bytesRead);
+      //i+= bytesRead;
+      //int bytesRead = Serial.readBytes(dataBuffer, commandSize);
+      byte b = 255;
+      writeEnsured(&b, i, 1);
+      i+= 1;
+    }
+  } else if (command == COMMAND_WRITE) {
+    
+  }
+  cmdReset();
 }
