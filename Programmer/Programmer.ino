@@ -26,6 +26,8 @@ const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 
 #define COMMAND_WRITE "W"
 #define COMMAND_WRITE_ALL "WA"
 
+const int DATA0[] = { 0xa2, 0xff, 0x9a, 0xa9, 0xff, 0x8d, 0x02, 0x60, 0xa9, 0xe0, 0x8d, 0x03, 0x60, 0xa9, 0x38, 0x20, 0x65, 0x80, 0xa9, 0x0e, 0x20, 0x65, 0x80, 0xa9, 0x06, 0x20, 0x65, 0x80, 0xa9, 0x01, 0x20, 0x65, 0x80, 0xa9, 0x48, 0x20, 0x78, 0x80, 0xa9, 0x65, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x6f, 0x20, 0x78, 0x80, 0xa9, 0x2c, 0x20, 0x78, 0x80, 0xa9, 0x20, 0x20, 0x78, 0x80, 0xa9, 0x77, 0x20, 0x78, 0x80, 0xa9, 0x6f, 0x20, 0x78, 0x80, 0xa9, 0x72, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x64, 0x20, 0x78, 0x80, 0xa9, 0x21, 0x20, 0x78, 0x80, 0x4c, 0x62, 0x80, 0x8d, 0x20, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0xa9, 0x80, 0x8d, 0x01, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0x60, 0x8d, 0x20, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0xa9, 0xa0, 0x8d, 0x01, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0x60 };
+
 /*
 Setup and Setup helper functions
 */
@@ -115,15 +117,16 @@ void read(byte buffer[], int startAddress, int readSize) {
 
 void write(int address, byte data) {
   setDataPins(OUTPUT);
+  delayMicroseconds(1000);
   setAddress(address);
   setData(data);
-  delayMicroseconds(100);
+  delayMicroseconds(1000);
   setOutputEnabled(LOW);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
-  delayMicroseconds(100);
+  delayMicroseconds(1000);
   setOutputEnabled(HIGH);
-  delayMicroseconds(100);
+  delayMicroseconds(1000);
   setChipEnabled(LOW);
   setWriteEnabled(LOW);
   delayMicroseconds(100);
@@ -152,6 +155,11 @@ void writeEnsured(int address, byte data) {
       Serial.println();
     }
   }
+  Serial.print("Success: ");
+  Serial.print(data);
+  Serial.print("@");
+  Serial.print(address);
+  Serial.println();
 }
 
 void writeEnsured(byte * data, int startAddress, int size) {
@@ -161,9 +169,25 @@ void writeEnsured(byte * data, int startAddress, int size) {
   }
 }
 
+void writeHelloworld() {
+  for (long i = 0; i <= MAX_WORD; i++) {
+    if (i <= 138) {
+      Serial.print("HW");
+      writeEnsured(i, DATA0[i]);
+    } else if (i == 0x7ffd) {
+      writeEnsured(0x7ffd, 0x80);
+    } else {
+      //writeEnsured(i, 0);
+    }
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   enablePins();
+  digitalWrite(PIN_LED_GREEN, HIGH);
+  writeHelloworld();
+  digitalWrite(PIN_LED_GREEN, LOW);
   while (!Serial) {}
   sendStr("setup_end");
 }
@@ -286,13 +310,12 @@ void cmdStart() {
     sendStr("BIN_END_ALL");
   } else if (command == COMMAND_WRITE_ALL) {
     for (long i = 0; i < MAX_WORD;) {
-      //int bytesRead = Serial.readBytes(dataBuffer, commandSize);
-      //writeEnsured(dataBuffer, i, bytesRead);
-      //i+= bytesRead;
-      //int bytesRead = Serial.readBytes(dataBuffer, commandSize);
-      byte b = 255;
-      writeEnsured(&b, i, 1);
-      i+= 1;
+      int bytesRead = Serial.readBytes(dataBuffer, commandSize);
+      writeEnsured(dataBuffer, i, bytesRead);
+      i+= bytesRead;
+      //byte b = 255;
+      //writeEnsured(&b, i, 1);
+      //i+= 1;
     }
   } else if (command == COMMAND_WRITE) {
     

@@ -15,3 +15,6 @@ msbuild.log
 msbuild.err
 msbuild.wrn
 *.BIN
+*.out
+asm/vasm
+
