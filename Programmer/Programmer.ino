@@ -5,13 +5,13 @@ Define constants
 #define PIN_LED_GREEN 13
 #define PIN_LED_IS_READING 32
 #define PIN_LED_IS_WRITING 33
-#define PIN_OUTPUT_ENABLED 6
-#define PIN_WRITE_ENABLED 11
-#define PIN_CHIP_ENABLED 4
+#define PIN_CHIP_ENABLED 28
+#define PIN_WRITE_ENABLED 29
+#define PIN_OUTPUT_ENABLED 30
 
-const int PIN_DATA[] = { 27, 28, 29, 16, 15, 14, 2, 3 };
+const int PIN_DATA[] = { 46, 47, 48, 49, 50, 51, 52, 53 };
 #define dataPinCount 8
-const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 17 };
+const int PIN_ADDRESS[] = { 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45 };
 #define addressPinCount 15
 
 // Number of words (bytes)
@@ -26,7 +26,16 @@ const int PIN_ADDRESS[] = { 26, 25, 24, 23, 22, 21, 20, 19, 9, 8, 5, 7, 18, 10, 
 #define COMMAND_WRITE "W"
 #define COMMAND_WRITE_ALL "WA"
 
-const int DATA0[] = { 0xa2, 0xff, 0x9a, 0xa9, 0xff, 0x8d, 0x02, 0x60, 0xa9, 0xe0, 0x8d, 0x03, 0x60, 0xa9, 0x38, 0x20, 0x65, 0x80, 0xa9, 0x0e, 0x20, 0x65, 0x80, 0xa9, 0x06, 0x20, 0x65, 0x80, 0xa9, 0x01, 0x20, 0x65, 0x80, 0xa9, 0x48, 0x20, 0x78, 0x80, 0xa9, 0x65, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x6f, 0x20, 0x78, 0x80, 0xa9, 0x2c, 0x20, 0x78, 0x80, 0xa9, 0x20, 0x20, 0x78, 0x80, 0xa9, 0x77, 0x20, 0x78, 0x80, 0xa9, 0x6f, 0x20, 0x78, 0x80, 0xa9, 0x72, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x64, 0x20, 0x78, 0x80, 0xa9, 0x21, 0x20, 0x78, 0x80, 0x4c, 0x62, 0x80, 0x8d, 0x20, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0xa9, 0x80, 0x8d, 0x01, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0x60, 0x8d, 0x20, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0xa9, 0xa0, 0x8d, 0x01, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0x60 };
+const int DATA0[] = {
+  0xa2, 0xff, 0x9a, 0xa9, 0xff, 0x8d, 0x02, 0x60, 0xa9, 0xe0, 0x8d, 0x03, 0x60, 0xa9, 0x38, 0x20,
+  0x65, 0x80, 0xa9, 0x0e, 0x20, 0x65, 0x80, 0xa9, 0x06, 0x20, 0x65, 0x80, 0xa9, 0x01, 0x20, 0x65,
+  0x80, 0xa9, 0x48, 0x20, 0x78, 0x80, 0xa9, 0x65, 0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80,
+  0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x6f, 0x20, 0x78, 0x80, 0xa9, 0x2c, 0x20, 0x78, 0x80, 0xa9,
+  0x20, 0x20, 0x78, 0x80, 0xa9, 0x77, 0x20, 0x78, 0x80, 0xa9, 0x6f, 0x20, 0x78, 0x80, 0xa9, 0x72,
+  0x20, 0x78, 0x80, 0xa9, 0x6c, 0x20, 0x78, 0x80, 0xa9, 0x64, 0x20, 0x78, 0x80, 0xa9, 0x21, 0x20,
+  0x78, 0x80, 0x4c, 0x62, 0x80, 0x8d, 0x20, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0xa9, 0x80, 0x8d,
+  0x01, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0x60, 0x8d, 0x20, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60,
+  0xa9, 0xa0, 0x8d, 0x01, 0x60, 0xa9, 0x20, 0x8d, 0x01, 0x60, 0x60 };
 
 /*
 Setup and Setup helper functions
@@ -63,13 +72,14 @@ void enablePins() {
   }
 }
 
-void setAddress(int a) {
-  byte tmp = a;
+void setAddress(unsigned int a) {
+  unsigned int tmp = a;
   for (int i = 0; i < addressPinCount; i++) {
     bool enabled = tmp&1;
     tmp = (tmp >> 1);
     digitalWrite(PIN_ADDRESS[i], enabled ? HIGH : LOW);
   }
+  delay(6);
 }
 
 void setData(byte b) {
@@ -90,52 +100,62 @@ byte readData() {
   return data;
 }
 
-byte read(int address) {
+byte read(unsigned int address) {
+  setData(0);
   setAddress(address);
-  setDataPins(INPUT);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
   setOutputEnabled(HIGH);
-  // delay because idk
-  delayMicroseconds(7000);
+  setDataPins(INPUT_PULLUP);
+  delayMicroseconds(1);
+  
   setChipEnabled(LOW);
   setOutputEnabled(LOW);
+  delayMicroseconds(4);
   byte data = readData();
+  delay(00000);
   setChipEnabled(HIGH);
   setOutputEnabled(HIGH);
   return data;
 }
 
-void read(byte buffer[], int startAddress, int readSize) {
+void read(byte buffer[], unsigned int startAddress, int readSize) {
   setWriteEnabled(HIGH);
   setOutputEnabled(LOW);
-  unsigned long start = millis();
   for (int w = 0; w < readSize; w++) {
     buffer[w] = read(startAddress + w);
   }
 }
 
-void write(int address, byte data) {
-  setDataPins(OUTPUT);
-  delayMicroseconds(1000);
+void write(unsigned int address, byte data) {
   setAddress(address);
-  setData(data);
-  delayMicroseconds(1000);
+  setDataPins(OUTPUT);
   setOutputEnabled(LOW);
   setWriteEnabled(HIGH);
   setChipEnabled(HIGH);
-  delayMicroseconds(1000);
+  delayMicroseconds(1);
+
   setOutputEnabled(HIGH);
-  delayMicroseconds(1000);
+  setData(data);
   setChipEnabled(LOW);
+  delayMicroseconds(1);
+
   setWriteEnabled(LOW);
-  delayMicroseconds(100);
+  delayMicroseconds(1);
+
   setWriteEnabled(HIGH);
+  delayMicroseconds(1);
+
   setChipEnabled(HIGH);
   setOutputEnabled(LOW);
+  delayMicroseconds(1);
+  //Serial.print("Write: ");
+  //Serial.println(data, BIN);
+  delay(0000);
+  setData(0);
 }
 
-void writeEnsured(int address, byte data) {
+void writeEnsured(unsigned int address, byte data) {
   int tries = 10;
   bool success = false;
   while (!success && tries > 0) {
@@ -145,21 +165,18 @@ void writeEnsured(int address, byte data) {
     byte readData = read(address);
     success = readData == data;
     tries--;
-    if (!success) {
-      Serial.print("ERROR WHILE WRITING: ");
-      Serial.print(data);
-      Serial.print("@");
-      Serial.print(address);
-      Serial.print(" != ");
-      Serial.print(readData);
-      Serial.println();
-    }
   }
-  Serial.print("Success: ");
-  Serial.print(data);
-  Serial.print("@");
-  Serial.print(address);
-  Serial.println();
+  if (!success) {
+    Serial.print("ERROR WHILE WRITING: ");
+    Serial.print(data);
+    Serial.print("@");
+    Serial.print(address);
+    byte readData = read(address);
+    Serial.print(": ");
+    Serial.print(readData);
+    Serial.println();
+  } else {
+  }
 }
 
 void writeEnsured(byte * data, int startAddress, int size) {
@@ -170,25 +187,61 @@ void writeEnsured(byte * data, int startAddress, int size) {
 }
 
 void writeHelloworld() {
-  for (long i = 0; i <= MAX_WORD; i++) {
+  for (unsigned int i = 0; i <= MAX_WORD; i++) {
     if (i <= 138) {
-      Serial.print("HW");
       writeEnsured(i, DATA0[i]);
     } else if (i == 0x7ffd) {
       writeEnsured(0x7ffd, 0x80);
     } else {
-      //writeEnsured(i, 0);
+      writeEnsured(i, 0);
     }
+    if (i % 256 == 0)
+      Serial.println(i, HEX);
+  }
+  for (unsigned int i = 0; i <= MAX_WORD; i++) {
+    byte data = read(i);
+    if (i <= 138) {
+      if (data != DATA0[i]) {
+        Serial.print("Invalid data read @");
+        Serial.print(i);
+        Serial.print(" ");
+        Serial.print(data, HEX);
+        Serial.print("!=");
+        Serial.print(DATA0[i], HEX);
+        Serial.println();
+      }
+    } else if (i == 0x7ffd) {
+      if (data != 0x80) {
+        Serial.print("Invalid data read @");
+        Serial.print(i);
+        Serial.print(" ");
+        Serial.print(data, HEX);
+        Serial.print("!=");
+        Serial.print(0x80, HEX);
+        Serial.println();
+      }
+    } else {
+      if (data != 0) {
+        Serial.print("Invalid data read @");
+        Serial.print(i);
+        Serial.print(" ");
+        Serial.print(data, HEX);
+        Serial.print("!=");
+        Serial.print(0, HEX);
+        Serial.println();
+      }
+    }
+    if (i % 256 == 0)
+      Serial.println(i, HEX);
   }
 }
 
 void setup() {
   Serial.begin(115200);
   enablePins();
-  digitalWrite(PIN_LED_GREEN, HIGH);
-  writeHelloworld();
-  digitalWrite(PIN_LED_GREEN, LOW);
+  setDataPins(OUTPUT);
   while (!Serial) {}
+  //writeHelloworld();
   sendStr("setup_end");
 }
 
@@ -301,21 +354,17 @@ void cmdStart() {
     delayMicroseconds(1);
   } else if (command == COMMAND_READ_ALL) {
     sendStr("BIN_START_ALL");
-    for (long i = 0; i < MAX_WORD;) {
-      int address = i * commandSize;
+    for (unsigned int i = 0; i < 128;) {
+      unsigned int address = i * commandSize;
       read(dataBuffer, address, commandSize);
       sendData(dataBuffer, commandSize);
-      i += commandSize;
     }
     sendStr("BIN_END_ALL");
   } else if (command == COMMAND_WRITE_ALL) {
-    for (long i = 0; i < MAX_WORD;) {
+    for (long i = 0; i <= MAX_WORD;) {
       int bytesRead = Serial.readBytes(dataBuffer, commandSize);
       writeEnsured(dataBuffer, i, bytesRead);
       i+= bytesRead;
-      //byte b = 255;
-      //writeEnsured(&b, i, 1);
-      //i+= 1;
     }
   } else if (command == COMMAND_WRITE) {
     
