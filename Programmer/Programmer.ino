@@ -73,22 +73,33 @@ void enablePins() {
 }
 
 void setAddress(unsigned int a) {
-  unsigned int tmp = a;
-  for (int i = 0; i < addressPinCount; i++) {
-    bool enabled = tmp&1;
-    tmp = (tmp >> 1);
-    digitalWrite(PIN_ADDRESS[i], enabled ? HIGH : LOW);
-  }
+  digitalWrite(PIN_ADDRESS[0], a & 1 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[1], a & 2 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[2], a & 4 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[3], a & 8 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[4], a & 16 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[5], a & 32 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[6], a & 64 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[7], a & 128 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[8], a & 256 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[9], a & 512 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[10], a & 1024 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[11], a & 2048 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[12], a & 4096 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[13], a & 8192 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[14], a & 16384 ? HIGH : LOW);
   delay(6);
 }
 
 void setData(byte b) {
-  byte tmp = b;
-  for (int i = 0; i < dataPinCount; i++) {
-    bool enabled = tmp&1;
-    tmp = (tmp >> 1);
-    digitalWrite(PIN_DATA[i], enabled ? HIGH : LOW);
-  }
+  digitalWrite(PIN_ADDRESS[0], b & 1 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[1], b & 2 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[2], b & 4 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[3], b & 8 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[4], b & 16 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[5], b & 32 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[6], b & 64 ? HIGH : LOW);
+  digitalWrite(PIN_ADDRESS[7], b & 128 ? HIGH : LOW);
 }
 
 byte readData() {
